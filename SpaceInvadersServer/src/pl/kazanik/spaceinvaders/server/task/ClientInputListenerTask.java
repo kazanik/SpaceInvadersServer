@@ -33,7 +33,8 @@ public class ClientInputListenerTask extends AbstractClientTask {
             client.pushInMessage(inputLine);
 //            System.out.println(client.getToken()+", in message: "+inputLine
 //                +", last heartbeat: "+client.getLastHeartBeat());
-            serverManager.updateClient(client.getToken(), location);
+//            serverManager.updateClient(client.getToken(), location);
+//            client.setLastHeartBeat(System.currentTimeMillis());
         }
     }
 

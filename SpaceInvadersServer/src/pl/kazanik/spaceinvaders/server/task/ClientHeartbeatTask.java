@@ -55,14 +55,17 @@ public class ClientHeartbeatTask extends AbstractClientTask {
             String inToken = inMessageSplitArray[1];
             Matcher tokenMatcher = GameConditions.TOKEN_PATTERN.matcher(inToken);
             //if(tokenMatcher.matches()) {}
+            client.setLastHeartBeat(System.currentTimeMillis());
         }
         String outMessage = GameConditions.SERVER_MODE_HEARTBEAT + 
             GameConditions.MESSAGE_FRAGMENT_SEPARATOR + clientToken;
         //client.printLine(outMessage);
         client.pushOutMessage(outMessage);
-        long idle = (long) (System.currentTimeMillis() - client.getLastHeartBeat());
-        if(idle > GameConditions.CLIENT_MAX_IDLE_TIME) {
-            System.out.println("client idle time expired");
+        long idle = Long.sum(System.currentTimeMillis(), -client.getLastHeartBeat());
+//        System.out.println(client.getToken()+" "+client.getLastHeartBeat());
+        if(Long.compareUnsigned(idle, GameConditions.CLIENT_MAX_IDLE_TIME) > 0) {
+            System.out.println("client idle time expired "+client.getLastHeartBeat()
+                    +" "+idle);
             serverManager.disconnectClient(clientToken);
             throw new IOException("client disconnected, throw to "
                 + "close resources and stop thread");

@@ -10,6 +10,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 import pl.kazanik.spaceinvaders.client.exception.ClientDisconnectedException;
 import pl.kazanik.spaceinvaders.server.connection.ServerManager;
 import pl.kazanik.spaceinvaders.client.Client;
+import pl.kazanik.spaceinvaders.entity.EntityManager;
 import pl.kazanik.spaceinvaders.settings.GameConditions;
 
 /**
@@ -48,6 +49,7 @@ public class ClientUpdateTask extends AbstractClientTask {
         Client client = serverManager.getClient(clientToken, location);
         String clientAddress = client.getSocket().getRemoteSocketAddress().toString();
         String inMessage = client.peekInMessage();
+        EntityManager em = EntityManager.getInstance();
         if(inMessage != null && !inMessage.isEmpty() && 
                 inMessage.startsWith(GameConditions.SERVER_MODE_SEND)) {
             client.pollInMessage();
@@ -64,8 +66,11 @@ public class ClientUpdateTask extends AbstractClientTask {
                     clientOther.pushOutMessage(outMessage);
                 }
             }
+//            client.setLastHeartBeat(System.currentTimeMillis());
         }
-        String outMessage = GameConditions.SERVER_MODE_SEND;
+        String serEnts = em.serializeServerEntities();
+        String outMessage = GameConditions.SERVER_MODE_SEND + 
+                GameConditions.MESSAGE_FRAGMENT_SEPARATOR + serEnts;
         client.pushOutMessage(outMessage);
     }
 }

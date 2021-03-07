@@ -88,11 +88,11 @@ public class ServerManager {
         int maxThreads = calculatePoolMaxThreads();
         //clientListenerPool = Executors.newWorkStealingPool(maxThreads);
         //clientWorkerPool = Executors.newWorkStealingPool(maxThreads);
-        clientListenerPool = Executors.newCachedThreadPool();
-        clientHeartbeatPool = Executors.newCachedThreadPool();
-        clientUpdatePool = Executors.newCachedThreadPool();
-        clientInputPool = Executors.newCachedThreadPool();
-        clientOutputPool = Executors.newCachedThreadPool();
+        clientListenerPool = Executors.newSingleThreadExecutor();
+        clientHeartbeatPool = Executors.newSingleThreadExecutor();
+        clientUpdatePool = Executors.newSingleThreadExecutor();
+        clientInputPool = Executors.newSingleThreadExecutor();
+        clientOutputPool = Executors.newSingleThreadExecutor();
     }
     
     public synchronized void submitClientListenerTask(String clientToken, Socket clientSocket) {

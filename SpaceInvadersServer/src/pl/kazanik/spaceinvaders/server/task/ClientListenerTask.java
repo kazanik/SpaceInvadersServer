@@ -47,8 +47,8 @@ public class ClientListenerTask extends AbstractClientTask {
                 AbstractClientTask outputTask = 
                     new ClientOutputPrinterTask(clientToken, serverManager, clientTaskLock);
                 //if(frames%2 == 0) {
-                    Future<?> futureHeartbeat = serverManager.submitClientHeartbeatTask(heartbeatTask);
-                    futureHeartbeat.get(100, TimeUnit.MICROSECONDS);
+//                    Future<?> futureHeartbeat = serverManager.submitClientHeartbeatTask(heartbeatTask);
+//                    futureHeartbeat.get(100, TimeUnit.MICROSECONDS);
                 //}
                 Future<?> futureUpdate = serverManager.submitClientUpdateTask(updateTask);
                 futureUpdate.get(100, TimeUnit.MICROSECONDS);
