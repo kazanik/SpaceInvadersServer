@@ -33,35 +33,39 @@ public class ClientListenerTask extends AbstractClientTask {
     @Override
     protected void execute() throws IOException {
         int max_frames = 2_000_000_000;
-        while(runn) {
+        while(serverManager.checkClientAlive(clientToken)) {
             try {
                 frames++;
                 Thread.sleep(GameConditions.SERVER_SYNCH_DELAY2);
-                //Thread.sleep(100);
-                AbstractClientTask heartbeatTask = 
-                    new ClientHeartbeatTask(clientToken, serverManager, clientTaskLock);
-                AbstractClientTask updateTask = 
-                    new ClientUpdateTask(clientToken, serverManager, clientTaskLock);
-                AbstractClientTask inputTask = 
-                    new ClientInputListenerTask(clientToken, serverManager, clientTaskLock);
-                AbstractClientTask outputTask = 
-                    new ClientOutputPrinterTask(clientToken, serverManager, clientTaskLock);
+//                Thread.sleep(1000);
                 //if(frames%2 == 0) {
-//                    Future<?> futureHeartbeat = serverManager.submitClientHeartbeatTask(heartbeatTask);
-//                    futureHeartbeat.get(100, TimeUnit.MICROSECONDS);
-                //}
-                Future<?> futureUpdate = serverManager.submitClientUpdateTask(updateTask);
-                futureUpdate.get(100, TimeUnit.MICROSECONDS);
-                Future<?> futureInput = serverManager.submitClientInputTask(inputTask);
-                futureInput.get(100, TimeUnit.MICROSECONDS);
-                Future<?> futureOutput = serverManager.submitClientOutputTask(outputTask);
-                futureOutput.get(100, TimeUnit.MICROSECONDS);
+                if(!serverManager.isHeartbeatRunning()) {
+                    serverManager.setHeartbeatRunning(true);
+                    serverManager.submitClientTask(new ClientHeartbeatTask(
+                            clientToken, serverManager, clientTaskLock));
+                }
+                if(!serverManager.isUpdateRunning()) {
+                    serverManager.setUpdateRunning(true);
+                    serverManager.submitClientTask(new ClientUpdateTask(
+                            clientToken, serverManager, clientTaskLock));
+                }
+                if(!serverManager.isInputRunning()) {
+                    serverManager.setInputRunning(true);
+                    serverManager.submitClientTask(new ClientInputListenerTask(
+                            clientToken, serverManager, clientTaskLock));
+                }
+                if(!serverManager.isOutputRunning()) {
+                    serverManager.setOutputRunning(true);
+                    serverManager.submitClientTask(new ClientOutputPrinterTask(
+                            clientToken, serverManager, clientTaskLock));
+                }
+                serverManager.checkClientAlive(clientToken);
                 if(frames >= max_frames)
                     frames = 0;
                 //System.out.println("blabllab");
-            } catch(InterruptedException e) {}
-            catch(TimeoutException te) {}
-            catch (ExecutionException ex) {
+            } catch(InterruptedException ex) {
+//            catch(TimeoutException te) {}
+//            catch (ExecutionException ex) {
                 if(ExceptionUtils.isCausedByIOEx(ex)) {
                     System.out.println("@@@@@client listener execute: "
                         + "listen/update task exception catched, "

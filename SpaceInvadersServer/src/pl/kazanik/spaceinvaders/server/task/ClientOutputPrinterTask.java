@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.concurrent.locks.ReadWriteLock;
 import pl.kazanik.spaceinvaders.client.Client;
 import pl.kazanik.spaceinvaders.client.exception.ClientDisconnectedException;
+import pl.kazanik.spaceinvaders.client.exception.ExceptionUtils;
 import pl.kazanik.spaceinvaders.server.connection.ServerManager;
 import pl.kazanik.spaceinvaders.settings.GameConditions;
 
@@ -27,11 +28,28 @@ public class ClientOutputPrinterTask extends AbstractClientTask {
     
     @Override
     protected void execute() throws IOException {
+        boolean runn = true;
         Client client = serverManager.getClient(clientToken, location);
-        String outputLine = client.pollOutMessage();
-        if(outputLine != null) {
-            client.printLine(outputLine);
-            //System.out.println("out message: "+outputLine);
+        while(serverManager.checkClientAlive(clientToken)) {
+            try {
+                Thread.sleep(GameConditions.SERVER_SYNCH_DELAY2);
+                String outputLine = client.pollOutMessage();
+                if(outputLine != null) {
+                    client.printLine(outputLine);
+                    //System.out.println("out message: "+outputLine);
+                    client.setLastHeartBeat(System.currentTimeMillis());
+                    System.out.println("output");
+                }
+            } catch(InterruptedException ex) {
+                if(ExceptionUtils.isCausedByIOEx(ex)) {
+                    System.out.println("@@@@@server output execute: "
+                        + "output task exception catched, "
+                        + "now try stop thread and close resources");
+                    runn = false;
+                } else {
+                    System.out.println("so timeout");
+                }
+            }
         }
     }
 
@@ -41,7 +59,9 @@ public class ClientOutputPrinterTask extends AbstractClientTask {
             execute();
             return true;
         } catch(IOException e) {
-            String exLocation = "input listener task execute ioex";
+            serverManager.setOutputRunning(false);
+            serverManager.disconnectClient(clientToken);
+            String exLocation = "output printer task execute ioex";
             ClientDisconnectedException cde = new ClientDisconnectedException(
                     clientToken, exLocation, e.getMessage(), e);
             error = cde;

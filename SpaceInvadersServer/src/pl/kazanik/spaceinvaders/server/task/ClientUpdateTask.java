@@ -10,6 +10,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 import pl.kazanik.spaceinvaders.client.exception.ClientDisconnectedException;
 import pl.kazanik.spaceinvaders.server.connection.ServerManager;
 import pl.kazanik.spaceinvaders.client.Client;
+import pl.kazanik.spaceinvaders.client.exception.ExceptionUtils;
 import pl.kazanik.spaceinvaders.entity.EntityManager;
 import pl.kazanik.spaceinvaders.settings.GameConditions;
 
@@ -32,6 +33,8 @@ public class ClientUpdateTask extends AbstractClientTask {
             execute();
             return true;
         } catch(IOException e) {
+            serverManager.setUpdateRunning(false);
+            serverManager.disconnectClient(clientToken);
             String exLocation = "update task execute ioex";
             ClientDisconnectedException cde = new ClientDisconnectedException(
                     clientToken, exLocation, e.getMessage(), e);
@@ -46,31 +49,46 @@ public class ClientUpdateTask extends AbstractClientTask {
     protected void execute() throws IOException {
         if(!serverManager.areAtleastTwoConnected())
             return;
+        boolean runn = true;
         Client client = serverManager.getClient(clientToken, location);
-        String clientAddress = client.getSocket().getRemoteSocketAddress().toString();
-        String inMessage = client.peekInMessage();
-        EntityManager em = EntityManager.getInstance();
-        if(inMessage != null && !inMessage.isEmpty() && 
-                inMessage.startsWith(GameConditions.SERVER_MODE_SEND)) {
-            client.pollInMessage();
-            String[] inMessageSplitArray = inMessage.split(
-                    GameConditions.MESSAGE_FRAGMENT_SEPARATOR);
-            String inSerEnts = inMessageSplitArray[1];
-            for(Client clientOther : serverManager.getClients()) {
-                String clientOtherToken = clientOther.getToken();
-                if(!clientOtherToken.equals(clientToken)) {
-                    //clientOther.printLine(GameConditions.SERVER_MODE_RECEIVE
-                        //+ GameConditions.MESSAGE_FRAGMENT_SEPARATOR + inSerEnts);
-                    String outMessage = GameConditions.SERVER_MODE_RECEIVE
-                        + GameConditions.MESSAGE_FRAGMENT_SEPARATOR + inSerEnts;
-                    clientOther.pushOutMessage(outMessage);
+        while(serverManager.checkClientAlive(clientToken)) {
+            try {
+                Thread.sleep(GameConditions.SERVER_SYNCH_DELAY2);
+                String inMessage = client.peekInMessage();
+                EntityManager em = EntityManager.getInstance();
+                if(inMessage != null && !inMessage.isEmpty() && 
+                        inMessage.startsWith(GameConditions.SERVER_MODE_SEND)) {
+                    client.pollInMessage();
+                    String[] inMessageSplitArray = inMessage.split(
+                            GameConditions.MESSAGE_FRAGMENT_SEPARATOR);
+                    String inSerEnts = inMessageSplitArray[1];
+                    for(Client clientOther : serverManager.getClients()) {
+                        String clientOtherToken = clientOther.getToken();
+                        if(!clientOtherToken.equals(clientToken)) {
+                            //clientOther.printLine(GameConditions.SERVER_MODE_RECEIVE
+                                //+ GameConditions.MESSAGE_FRAGMENT_SEPARATOR + inSerEnts);
+                            String outMessage = GameConditions.SERVER_MODE_RECEIVE
+                                + GameConditions.MESSAGE_FRAGMENT_SEPARATOR + inSerEnts;
+                            clientOther.pushOutMessage(outMessage);
+                        }
+                    }
+                    client.setLastHeartBeat(System.currentTimeMillis());
+                    System.out.println("update");
+                }
+                String serEnts = em.serializeServerEntities();
+                String outMessage = GameConditions.SERVER_MODE_SEND + 
+                        GameConditions.MESSAGE_FRAGMENT_SEPARATOR + serEnts;
+                client.pushOutMessage(outMessage);
+            } catch(InterruptedException ex) {
+                if(ExceptionUtils.isCausedByIOEx(ex)) {
+                    System.out.println("@@@@@server update execute: "
+                        + "update task exception catched, "
+                        + "now try stop thread and close resources");
+                    runn = false;
+                } else {
+                    System.out.println("so timeout");
                 }
             }
-//            client.setLastHeartBeat(System.currentTimeMillis());
         }
-        String serEnts = em.serializeServerEntities();
-        String outMessage = GameConditions.SERVER_MODE_SEND + 
-                GameConditions.MESSAGE_FRAGMENT_SEPARATOR + serEnts;
-        client.pushOutMessage(outMessage);
     }
 }

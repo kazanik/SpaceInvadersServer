@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.concurrent.locks.ReadWriteLock;
 import pl.kazanik.spaceinvaders.client.Client;
 import pl.kazanik.spaceinvaders.client.exception.ClientDisconnectedException;
+import pl.kazanik.spaceinvaders.client.exception.ExceptionUtils;
 import pl.kazanik.spaceinvaders.server.connection.ServerManager;
 import pl.kazanik.spaceinvaders.settings.GameConditions;
 
@@ -27,14 +28,30 @@ public class ClientInputListenerTask extends AbstractClientTask {
     
     @Override
     protected void execute() throws IOException {
+        boolean runn = true;
         Client client = serverManager.getClient(clientToken, location);
-        String inputLine = client.readLine();
-        if(inputLine != null && !inputLine.isEmpty()) {
-            client.pushInMessage(inputLine);
-//            System.out.println(client.getToken()+", in message: "+inputLine
-//                +", last heartbeat: "+client.getLastHeartBeat());
-//            serverManager.updateClient(client.getToken(), location);
-//            client.setLastHeartBeat(System.currentTimeMillis());
+        while(serverManager.checkClientAlive(clientToken)) {
+            try {
+                Thread.sleep(GameConditions.SERVER_SYNCH_DELAY2);
+                String inputLine = client.readLine();
+                if(inputLine != null && !inputLine.isEmpty()) {
+                    client.pushInMessage(inputLine);
+        //            System.out.println(client.getToken()+", in message: "+inputLine
+        //                +", last heartbeat: "+client.getLastHeartBeat());
+        //            serverManager.updateClient(client.getToken(), location);
+                    client.setLastHeartBeat(System.currentTimeMillis());
+                    System.out.println("input");
+                }
+            } catch(InterruptedException ex) {
+                if(ExceptionUtils.isCausedByIOEx(ex)) {
+                    System.out.println("@@@@@server input execute: "
+                        + "input task exception catched, "
+                        + "now try stop thread and close resources");
+                    runn = false;
+                } else {
+                    System.out.println("so timeout");
+                }
+            }
         }
     }
 
@@ -44,6 +61,8 @@ public class ClientInputListenerTask extends AbstractClientTask {
             execute();
             return true;
         } catch(IOException e) {
+            serverManager.setInputRunning(false);
+            serverManager.disconnectClient(clientToken);
             String exLocation = "input listener task execute ioex";
             ClientDisconnectedException cde = new ClientDisconnectedException(
                     clientToken, exLocation, e.getMessage(), e);

@@ -11,10 +11,12 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import pl.kazanik.spaceinvaders.server.main.ServerGameLoop;
 import pl.kazanik.spaceinvaders.server.session.SessionManager;
+import pl.kazanik.spaceinvaders.server.task.ClientListenerTask;
 import pl.kazanik.spaceinvaders.settings.GameConditions;
 import pl.kazanik.spaceinvaders.thread.ClientGameLoop;
 
@@ -103,7 +105,9 @@ public class ServerMainRun implements Runnable {
                     String clientToken = sessionManager.generateClientToken();
                     if(serverManager.connectClient(clientSocket, clientToken)) {
                         printClientInfo(clientSocket);
-                        serverManager.submitClientListenerTask(clientToken, clientSocket);
+                        serverManager.submitClientTask(
+                            new ClientListenerTask(clientToken, serverManager, 
+                                new ReentrantReadWriteLock(true)));
                         if(serverManager.isGameStarted()) {
                             // connect client to game
                         } else {

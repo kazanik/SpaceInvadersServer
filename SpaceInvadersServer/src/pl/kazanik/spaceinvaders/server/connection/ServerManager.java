@@ -7,7 +7,6 @@ package pl.kazanik.spaceinvaders.server.connection;
 
 import pl.kazanik.spaceinvaders.client.exception.ClientDisconnectedException;
 import pl.kazanik.spaceinvaders.server.task.AbstractClientTask;
-import pl.kazanik.spaceinvaders.server.task.ClientListenerTask;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -18,15 +17,12 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import pl.kazanik.spaceinvaders.difficulty.Difficulties;
-import pl.kazanik.spaceinvaders.entity.AbstractSpaceCraft;
 import pl.kazanik.spaceinvaders.generator.PlayerGenerator;
 import pl.kazanik.spaceinvaders.generator.SceneGenerator;
 import pl.kazanik.spaceinvaders.scene.Scene;
@@ -35,6 +31,7 @@ import pl.kazanik.spaceinvaders.entity.PlayerEntity;
 import pl.kazanik.spaceinvaders.generator.EnemyGenerator;
 import pl.kazanik.spaceinvaders.server.main.ServerGameLoop;
 import pl.kazanik.spaceinvaders.server.session.SessionManager;
+import pl.kazanik.spaceinvaders.settings.GameConditions;
 import pl.kazanik.spaceinvaders.settings.GameSettings;
 
 
@@ -45,35 +42,27 @@ import pl.kazanik.spaceinvaders.settings.GameSettings;
  */
 public class ServerManager {
     
-    //private volatile ConcurrentMap<String, Client> clients;
-    //private static final int IN_STREAM_BUFF_LEN = 4096;
     private volatile List<Client> clients;
-    private volatile char[] inStreamBuff;
     private final int MAX_PLAYERS;
     private final Difficulties gameDifficulty;
-    private final Object serverLock;
     private final SessionManager session;
-    private volatile ExecutorService clientListenerPool, clientHeartbeatPool,
-            clientUpdatePool, clientInputPool, clientOutputPool;
+    private volatile ExecutorService clientHeartbeatPool;
     private final Lock clientInLock, clientOutLock;
-    private final ReadWriteLock clientTaskLock;
     private boolean gameStarted, gameInited;
     private List<PlayerEntity> players;
     private Thread gameThread;
     private Runnable gameRunnable;
+    private boolean updateRunning, heartbeatRunning, inputRunning, outputRunning;
 
     public ServerManager(int MAX_PLAYERS, Difficulties gameDifficulty, 
             Object serverLock, SessionManager session) {
         this.MAX_PLAYERS = MAX_PLAYERS;
         this.gameDifficulty = gameDifficulty;
-        this.serverLock = serverLock;
         this.session = session;
-        //clients = new ConcurrentHashMap<>();
         //clients = new CopyOnWriteArrayList<>();
         this.clients = new ArrayList<>();
         this.clientInLock = new ReentrantLock();
         this.clientOutLock = new ReentrantLock();
-        this.clientTaskLock = new ReentrantReadWriteLock();
     }
     
     private int calculatePoolMaxThreads() {
@@ -81,38 +70,16 @@ public class ServerManager {
     }
     
     private Client createNullClient(String token) {
-        return new Client(token, null, 0l, null, null, null, null);
+        return new Client(token, null, null, null, null, null, null);
     }
     
     public void initClientThreadPools() {
         int maxThreads = calculatePoolMaxThreads();
-        //clientListenerPool = Executors.newWorkStealingPool(maxThreads);
-        //clientWorkerPool = Executors.newWorkStealingPool(maxThreads);
-        clientListenerPool = Executors.newSingleThreadExecutor();
-        clientHeartbeatPool = Executors.newSingleThreadExecutor();
-        clientUpdatePool = Executors.newSingleThreadExecutor();
-        clientInputPool = Executors.newSingleThreadExecutor();
-        clientOutputPool = Executors.newSingleThreadExecutor();
+        clientHeartbeatPool = Executors.newFixedThreadPool(4);
     }
     
-    public synchronized void submitClientListenerTask(String clientToken, Socket clientSocket) {
-        clientListenerPool.submit(new ClientListenerTask(clientToken, this, clientTaskLock));
-    }
-    
-    public synchronized Future<?> submitClientHeartbeatTask(AbstractClientTask task) {
-        return clientHeartbeatPool.submit(task);
-    }
-    
-    public synchronized Future<?> submitClientUpdateTask(AbstractClientTask task) {
-        return clientUpdatePool.submit(task);
-    }
-    
-    public synchronized Future<?> submitClientInputTask(AbstractClientTask task) {
-        return clientInputPool.submit(task);
-    }
-    
-    public synchronized Future<?> submitClientOutputTask(AbstractClientTask task) {
-        return clientOutputPool.submit(task);
+    public void submitClientTask(AbstractClientTask task) {
+        clientHeartbeatPool.submit(task);
     }
     
     public synchronized void disconnectClient(String token) throws IOException {
@@ -121,6 +88,7 @@ public class ServerManager {
             Client c = clients.remove(clientIndex);
             System.out.println("client "+token+" disconnected");
             c.closeSocket();
+            c.closeStreams();
             System.out.println("client "+token+" socket closed");
             //session.decrementTokenCounter();
         }
@@ -150,7 +118,7 @@ public class ServerManager {
                     PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
                     BufferedReader in = new BufferedReader(new InputStreamReader(
                         socket.getInputStream()));
-                    Client c = new Client(token, socket, System.currentTimeMillis(), 
+                    Client c = new Client(token, socket, new AtomicLong(System.currentTimeMillis()), 
                             in, out, clientInLock, clientOutLock);
                     clients.add(c);
                 }
@@ -170,6 +138,7 @@ public class ServerManager {
         int index = clients.indexOf(createNullClient(token));
         if(index == -1)
             throw new ClientDisconnectedException(token, location, null, null);
+//        System.out.println(clients.get(index));
         return clients.get(index);
     }
     
@@ -184,14 +153,30 @@ public class ServerManager {
         }
     }
     
+    public boolean checkClientAlive(String clientToken) 
+            throws IOException, ClientDisconnectedException {
+        Client c = getClient(clientToken, "");
+        if(c.getSocket().isClosed()) {
+            System.out.println("client socket closed");
+            disconnectClient(clientToken);
+            throw new IOException("client disconnected, throw to "
+                + "close resources and stop thread");
+        }
+        long idle = Long.sum(System.currentTimeMillis(), -c.getLastHeartBeat());
+//        System.out.println(client.getToken()+" "+client.getLastHeartBeat());
+        if(Long.compareUnsigned(idle, GameConditions.CLIENT_MAX_IDLE_TIME) > 0) {
+            System.out.println("client idle time expired "+c.getLastHeartBeat()
+                +" "+idle);
+            disconnectClient(c.getToken());
+            throw new IOException("client disconnected, throw to "
+                + "close resources and stop thread");
+        }
+        return true;
+    }
+    
     public void closeServer() {
         disconnectAllClients();
-        clientListenerPool.shutdown();
         clientHeartbeatPool.shutdown();
-        clientUpdatePool.shutdown();
-        clientInputPool.shutdown();
-        clientOutputPool.shutdown();
-        //serverThread.getServerRunnable().setRunning(false);
         if(gameThread != null)
             gameThread.interrupt();
         gameThread = null;
@@ -256,6 +241,38 @@ public class ServerManager {
 
     public List<PlayerEntity> getPlayers() {
         return players;
+    }
+
+    public boolean isUpdateRunning() {
+        return updateRunning;
+    }
+
+    public void setUpdateRunning(boolean updateRunning) {
+        this.updateRunning = updateRunning;
+    }
+
+    public boolean isHeartbeatRunning() {
+        return heartbeatRunning;
+    }
+
+    public void setHeartbeatRunning(boolean heartbeatRunning) {
+        this.heartbeatRunning = heartbeatRunning;
+    }
+
+    public boolean isInputRunning() {
+        return inputRunning;
+    }
+
+    public void setInputRunning(boolean inputRunning) {
+        this.inputRunning = inputRunning;
+    }
+
+    public boolean isOutputRunning() {
+        return outputRunning;
+    }
+
+    public void setOutputRunning(boolean outputRunning) {
+        this.outputRunning = outputRunning;
     }
     
 }
