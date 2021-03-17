@@ -20,7 +20,7 @@ import pl.kazanik.spaceinvaders.settings.GameConditions;
  */
 public class ClientHeartbeatTask extends AbstractClientTask {
 
-    private final String location = "heartbeat task execute";
+    private final String location = "server heartbeat task execute";
     
     public ClientHeartbeatTask(String clientToken, ServerManager serverManager,
             ReadWriteLock clientTaskLock) {
@@ -28,26 +28,28 @@ public class ClientHeartbeatTask extends AbstractClientTask {
     }
     
     @Override
-    public Boolean call() throws /*Exception*/ IOException {
+    public void run() {
+//    public Boolean call() throws /*Exception*/ IOException {
         try {
             execute();
-            return true;
+//            return true;
         } catch(IOException e) {
             serverManager.setHeartbeatRunning(false);
-            serverManager.disconnectClient(clientToken);
-            String exLocation = "heartbeat task execute ioex";
-            ClientDisconnectedException cde = new ClientDisconnectedException(
-                    clientToken, exLocation, e.getMessage(), e);
-            error = cde;
-            throw cde;
-            //throw new RuntimeException("ex listening client heartbeat", e);
-            //throw e;
+            try {
+                serverManager.disconnectClient(clientToken);
+            } finally {
+                ClientDisconnectedException cde = new ClientDisconnectedException(
+                        clientToken, location, e.getMessage(), e);
+                error = cde;
+    //            throw cde;
+                throw new RuntimeException("ex listening client heartbeat", cde);
+                //throw e;
+            }
         }
     }
     
     @Override
     protected void execute() throws IOException {
-        boolean runn = true;
         Client client = serverManager.getClient(clientToken, location);
         while(serverManager.checkClientAlive(clientToken)) {
             try {
@@ -73,7 +75,6 @@ public class ClientHeartbeatTask extends AbstractClientTask {
                     System.out.println("@@@@@server heartbeat execute: "
                         + "heartbeat task exception catched, "
                         + "now try stop thread and close resources");
-                    runn = false;
                 } else {
                     System.out.println("so timeout");
                 }

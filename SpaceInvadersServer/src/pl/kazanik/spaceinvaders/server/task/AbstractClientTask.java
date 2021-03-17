@@ -14,7 +14,7 @@ import pl.kazanik.spaceinvaders.server.connection.ServerManager;
  *
  * @author user
  */
-public abstract class AbstractClientTask implements /*Runnable*/ Callable<Boolean> {
+public abstract class AbstractClientTask implements Runnable /*Callable<Boolean>*/ {
     
     protected final String clientToken;
     protected final ServerManager serverManager;
@@ -22,6 +22,13 @@ public abstract class AbstractClientTask implements /*Runnable*/ Callable<Boolea
     protected Exception error;
     protected final String TASK_TYPE;
     protected final ReadWriteLock clientTaskLock;
+
+    public AbstractClientTask() {
+        clientToken = null;
+        serverManager = null;
+        TASK_TYPE = null;
+        clientTaskLock = null;
+    }
     
     protected AbstractClientTask(String clientToken, ServerManager serverManager,
             String TASK_TYPE, ReadWriteLock clientTaskLock) {

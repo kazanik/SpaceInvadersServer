@@ -53,10 +53,12 @@ public class ServerMain {
             PLAYER_SLOTS, gameDifficulty, serverLock, sessionManager);
         ServerMainRun serverRunn = new ServerMainRun(
             serverManager, serverLock, sessionManager);
-        Thread serverThread = new Thread(serverRunn);
-        serverThread.start();
-        serverInstances.add(serverThread);
-        checkServerInstances();
+        serverManager.initServerThreadPool();
+        serverManager.launchServer(serverRunn);
+//        Thread serverThread = new Thread(serverRunn);
+//        serverThread.start();
+//        serverInstances.add(serverThread);
+//        checkServerInstances();
     }
     
 }

@@ -19,7 +19,7 @@ import pl.kazanik.spaceinvaders.settings.GameConditions;
  */
 public class ClientOutputPrinterTask extends AbstractClientTask {
     
-    private final String location = "input listener task execute";
+    private final String location = "server output listener task execute";
     
     public ClientOutputPrinterTask(String clientToken, ServerManager serverManager, 
             ReadWriteLock clientTaskLock) {
@@ -28,7 +28,6 @@ public class ClientOutputPrinterTask extends AbstractClientTask {
     
     @Override
     protected void execute() throws IOException {
-        boolean runn = true;
         Client client = serverManager.getClient(clientToken, location);
         while(serverManager.checkClientAlive(clientToken)) {
             try {
@@ -45,7 +44,6 @@ public class ClientOutputPrinterTask extends AbstractClientTask {
                     System.out.println("@@@@@server output execute: "
                         + "output task exception catched, "
                         + "now try stop thread and close resources");
-                    runn = false;
                 } else {
                     System.out.println("so timeout");
                 }
@@ -54,20 +52,23 @@ public class ClientOutputPrinterTask extends AbstractClientTask {
     }
 
     @Override
-    public Boolean call() throws Exception {
+    public void run() {
+//    public Boolean call() throws Exception {
         try {
             execute();
-            return true;
+//            return true;
         } catch(IOException e) {
             serverManager.setOutputRunning(false);
-            serverManager.disconnectClient(clientToken);
-            String exLocation = "output printer task execute ioex";
-            ClientDisconnectedException cde = new ClientDisconnectedException(
-                    clientToken, exLocation, e.getMessage(), e);
-            error = cde;
-            throw cde;
-            //throw new RuntimeException("ex listening client heartbeat", e);
-            //throw e;
+            try {
+                serverManager.disconnectClient(clientToken);
+            } finally {
+                ClientDisconnectedException cde = new ClientDisconnectedException(
+                        clientToken, location, e.getMessage(), e);
+                error = cde;
+    //            throw cde;
+                throw new RuntimeException("ex listening client heartbeat", cde);
+                //throw e;
+            }
         }
     }
 }

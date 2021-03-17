@@ -46,11 +46,12 @@ public class ServerManager {
     private final int MAX_PLAYERS;
     private final Difficulties gameDifficulty;
     private final SessionManager session;
-    private volatile ExecutorService clientHeartbeatPool;
+    private volatile ExecutorService serverThreadPool;
     private final Lock clientInLock, clientOutLock;
     private boolean gameStarted, gameInited;
     private List<PlayerEntity> players;
     private Thread gameThread;
+    private List<Thread> clientThreads;
     private Runnable gameRunnable;
     private boolean updateRunning, heartbeatRunning, inputRunning, outputRunning;
 
@@ -59,10 +60,11 @@ public class ServerManager {
         this.MAX_PLAYERS = MAX_PLAYERS;
         this.gameDifficulty = gameDifficulty;
         this.session = session;
-        //clients = new CopyOnWriteArrayList<>();
-        this.clients = new ArrayList<>();
+        this.clients = new CopyOnWriteArrayList<>();
+//        this.clients = new ArrayList<>();
         this.clientInLock = new ReentrantLock();
         this.clientOutLock = new ReentrantLock();
+        clientThreads = new ArrayList<>();
     }
     
     private int calculatePoolMaxThreads() {
@@ -73,13 +75,21 @@ public class ServerManager {
         return new Client(token, null, null, null, null, null, null);
     }
     
-    public void initClientThreadPools() {
-        int maxThreads = calculatePoolMaxThreads();
-        clientHeartbeatPool = Executors.newFixedThreadPool(4);
+    public void initServerThreadPool() {
+//        int maxThreads = calculatePoolMaxThreads();
+//        clientHeartbeatPool = Executors.newSingleThreadExecutor();
+        serverThreadPool = Executors.newFixedThreadPool(3);
     }
     
-    public void submitClientTask(AbstractClientTask task) {
-        clientHeartbeatPool.submit(task);
+    public void launchServer(Runnable serverRunn) {
+        serverThreadPool.submit(serverRunn);
+    }
+    
+    public void submitClientTask(AbstractClientTask clientTask) {
+        serverThreadPool.submit(clientTask);
+//        Thread t = new Thread(task);
+//        t.start();
+//        clientThreads.add(t);
     }
     
     public synchronized void disconnectClient(String token) throws IOException {
@@ -134,7 +144,7 @@ public class ServerManager {
         return false;
     }
     
-    public synchronized Client getClient(String token, String location) throws IOException {
+    public  Client getClient(String token, String location) throws IOException {
         int index = clients.indexOf(createNullClient(token));
         if(index == -1)
             throw new ClientDisconnectedException(token, location, null, null);
@@ -142,12 +152,13 @@ public class ServerManager {
         return clients.get(index);
     }
     
-    public synchronized void updateClient(String clientToken, String location) throws IOException {
+    public  void updateClient(String clientToken, String location) throws IOException {
         int clientIndex = clients.indexOf(createNullClient(clientToken));
         if(clientIndex != -1) {
             Client client = clients.get(clientIndex);
             client.setLastHeartBeat(System.currentTimeMillis());
             clients.set(clientIndex, client);
+            System.out.println("client updated");
         } else {
             throw new ClientDisconnectedException(clientToken, location, null, null);
         }
@@ -176,10 +187,11 @@ public class ServerManager {
     
     public void closeServer() {
         disconnectAllClients();
-        clientHeartbeatPool.shutdown();
-        if(gameThread != null)
-            gameThread.interrupt();
-        gameThread = null;
+        serverThreadPool.shutdownNow();
+//        clientHeartbeatPool.shutdown();
+//        if(gameThread != null)
+//            gameThread.interrupt();
+//        gameThread = null;
     }
     
     public void prepareGame() {
@@ -202,8 +214,9 @@ public class ServerManager {
     
     public void startGame() {
         gameRunnable = new ServerGameLoop(players);
-        gameThread = new Thread(gameRunnable);
-        gameThread.start();
+        serverThreadPool.submit(gameRunnable);
+//        gameThread = new Thread(gameRunnable);
+//        gameThread.start();
         gameStarted = true;
     }
     

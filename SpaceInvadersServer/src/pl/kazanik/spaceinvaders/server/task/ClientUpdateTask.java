@@ -20,7 +20,7 @@ import pl.kazanik.spaceinvaders.settings.GameConditions;
  */
 public class ClientUpdateTask extends AbstractClientTask {
 
-    private final String location = "update task execute";
+    private final String location = "server update task execute";
     
     public ClientUpdateTask(String clientToken, ServerManager serverManager, 
             ReadWriteLock clientTaskLock) {
@@ -28,36 +28,40 @@ public class ClientUpdateTask extends AbstractClientTask {
     }
     
     @Override
-    public Boolean call() throws /*Exception*/ IOException {
+    public void run() {
+//    public Boolean call() throws /*Exception*/ IOException {
         try {
             execute();
-            return true;
+//            return true;
         } catch(IOException e) {
             serverManager.setUpdateRunning(false);
-            serverManager.disconnectClient(clientToken);
-            String exLocation = "update task execute ioex";
-            ClientDisconnectedException cde = new ClientDisconnectedException(
-                    clientToken, exLocation, e.getMessage(), e);
-            error = cde;
-            throw cde;
-            //throw new RuntimeException("ex updating clients", e);
-            //throw e;
+            try {
+                serverManager.disconnectClient(clientToken);
+            } finally {
+                ClientDisconnectedException cde = new ClientDisconnectedException(
+                        clientToken, location, e.getMessage(), e);
+                error = cde;
+    //            throw cde;
+                throw new RuntimeException("ex updating clients", cde);
+                //throw e;
+            }
         }
     }
     
     @Override
     protected void execute() throws IOException {
-        if(!serverManager.areAtleastTwoConnected())
-            return;
-        boolean runn = true;
-        Client client = serverManager.getClient(clientToken, location);
+//        if(!serverManager.areAtleastTwoConnected())
+//            return;
         while(serverManager.checkClientAlive(clientToken)) {
             try {
                 Thread.sleep(GameConditions.SERVER_SYNCH_DELAY2);
+                Client client = serverManager.getClient(clientToken, location);
                 String inMessage = client.peekInMessage();
                 EntityManager em = EntityManager.getInstance();
                 if(inMessage != null && !inMessage.isEmpty() && 
                         inMessage.startsWith(GameConditions.SERVER_MODE_SEND)) {
+//                    client.setLastHeartBeat(System.currentTimeMillis());
+                    serverManager.updateClient(client.getToken(), location);
                     client.pollInMessage();
                     String[] inMessageSplitArray = inMessage.split(
                             GameConditions.MESSAGE_FRAGMENT_SEPARATOR);
@@ -72,7 +76,6 @@ public class ClientUpdateTask extends AbstractClientTask {
                             clientOther.pushOutMessage(outMessage);
                         }
                     }
-                    client.setLastHeartBeat(System.currentTimeMillis());
                     System.out.println("update");
                 }
                 String serEnts = em.serializeServerEntities();
@@ -84,7 +87,6 @@ public class ClientUpdateTask extends AbstractClientTask {
                     System.out.println("@@@@@server update execute: "
                         + "update task exception catched, "
                         + "now try stop thread and close resources");
-                    runn = false;
                 } else {
                     System.out.println("so timeout");
                 }
