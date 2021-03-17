@@ -48,7 +48,7 @@ public class ServerMainRun implements Runnable {
             serverSocket = new ServerSocket(GameConditions.SERVER_PORT, 
                     serverManager.getMAX_PLAYERS(), serverAddress);
 //            serverManager.initClientThreadPools();
-            serverSocket.setSoTimeout(10);
+            serverSocket.setSoTimeout(20);
             running = true;
             return true;
         } catch (UnknownHostException ex) {
@@ -103,7 +103,7 @@ public class ServerMainRun implements Runnable {
             while (running) {
                 try {
                     Socket clientSocket = serverSocket.accept();
-                    clientSocket.setSoTimeout(10);
+                    clientSocket.setSoTimeout(20);
                     String clientToken = sessionManager.generateClientToken();
                     if(serverManager.connectClient(clientSocket, clientToken)) {
                         printClientInfo(clientSocket);
